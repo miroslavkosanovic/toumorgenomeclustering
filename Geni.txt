@@ -1,0 +1,228 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import pandas as pd
+import gdown
+from sklearn.decomposition import PCA
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+from scipy.cluster.hierarchy import linkage, dendrogram
+from sklearn.cluster import AgglomerativeClustering
+from sklearn.cluster import KMeans
+from sklearn.cluster import DBSCAN
+from sklearn import metrics
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from google.colab import drive
+#drive.mount('/content/drive/')
+
+data_file_id = '1tLUsZQDfRYotT2wtm2VhhQyvKyhyvUZ9'
+data_file_url = f'https://drive.google.com/uc?export=download&id={data_file_id}'
+data_file = 'data.csv'  # Choose a filename for the downloaded file
+gdown.download(data_file_url, data_file, quiet=False)
+data = pd.read_csv(data_file, index_col=[0])
+
+labels_file_id = '1mo6Hg09vdHdpA0nK62gHcBmH0df1V1CM'
+labels_file_url = f'https://drive.google.com/uc?export=download&id={labels_file_id}'
+# Read labels to pandas dataframe
+labels = pd.read_csv(labels_file_url, index_col=[0])
+
+print(data.shape)
+print(labels.shape)
+
+print("Data nan:", data.isna().sum().sum())
+print("Labels nan:", labels.isna().sum().sum())
+
+#data.head()
+
+labels['Class'].value_counts()
+
+print(labels.Class.unique())
+#max(data.max())
+#min(data.min())
+data.describe()
+
+data_cpy = data
+
+to_drop = data_cpy.columns[(data_cpy.max() == 0) & (data_cpy.min() == 0)]
+data_cpy.drop(to_drop, 1, inplace=True)
+print(data_cpy.shape)
+
+
+plt.figure(figsize=(60,21))
+dend = dendrogram(linkage(data_cpy, method='ward', metric='euclidean'), orientation='top',
+                  distance_sort='descending', show_leaf_counts=True)
+
+def print_score(kmeans, agl, data, metric='euclidean'):
+  print('ARI: ', metrics.adjusted_rand_score(agl.labels_, kmeans.labels_))
+  print('SIL for AGG: ', metrics.silhouette_score(data, agl.labels_, metric=metric))
+  print('SIL for Kmeans: ', metrics.silhouette_score(data, kmeans.labels_, metric=metric))
+  #print('SIL for DBSCAN: ', metrics.silhouette_score(data, dbscan.labels_))
+  print('')
+  print('CH for AGG: ', metrics.calinski_harabasz_score(data, agl.labels_))
+  print('CH for Kmeans: ', metrics.calinski_harabasz_score(data, kmeans.labels_))
+  #print('CH for DBSCAN: ', metrics.calinski_harabasz_score(data, dbscan.labels_))
+  print('')
+  print('DB for AGG: ', metrics.davies_bouldin_score(data, agl.labels_))
+  print('DB for Kmeans: ', metrics.davies_bouldin_score(data, kmeans.labels_))
+  #print('DB for DBSCAN: ', metrics.davies_bouldin_score(data, dbscan.labels_))
+  print()
+
+def testiraj_bez_ward(data):
+  for clust in [4, 5]:
+    for lin in ['single', 'complete', 'average']:
+      for met in ['euclidean', 'cosine', 'manhattan', 'l1', 'l2']:
+        aggl = AgglomerativeClustering(n_clusters=clust, affinity=met, linkage=lin)
+        aggl.fit_predict(data)
+
+        kmeans = KMeans(n_clusters=clust, n_init=10, max_iter=300, 
+                    init='k-means++',random_state=42)
+        kmeans.fit_predict(data)
+
+        print('Broj klastera ', clust, ', linkage ', lin, ', metrika', met, ':')
+        print_score(kmeans, aggl, data, metric=met)
+        print('##########################################')
+
+for clust in [4, 5]:
+  #for lin in ['ward', 'single', 'complete']:
+  for lin in ['ward']:
+    aggl = AgglomerativeClustering(n_clusters=clust, affinity='euclidean', linkage=lin)
+    aggl.fit_predict(data)
+
+    kmeans = KMeans(n_clusters=clust, n_init=10, max_iter=300, 
+                init='k-means++',random_state=42)
+    kmeans.fit_predict(data)
+
+#    dbscan = DBSCAN(min_samples=10, eps=10)
+#    dbscan.fit_predict(data)
+
+    print('Broj klastera: ', clust, ', linkage: ', lin)
+    print_score(kmeans,aggl ,data)
+    print('##########################################')
+
+#for clust in [4, 5]:
+for clust in [5]:
+  for lin in ['single', 'complete', 'average']:
+    for met in ['euclidean', 'cosine', 'manhattan', 'l1', 'l2']:
+      aggl = AgglomerativeClustering(n_clusters=clust, affinity=met, linkage=lin)
+      aggl.fit_predict(data)
+
+      kmeans = KMeans(n_clusters=clust, n_init=10, max_iter=300, 
+                  init='k-means++',random_state=42)
+      kmeans.fit_predict(data)
+
+#      dbscan = DBSCAN(min_samples=10, eps=10)
+#      dbscan.fit_predict(data)
+
+      print('Broj klastera ', clust, ', linkage ', lin, ', metrika', met, ':')
+      print_score(kmeans,aggl ,data, metric=met)
+      print('##########################################')
+
+for semp in [1, 5, 10, 50, 100]:
+  for ep in [0.5, 1, 5, 10, 50, 100]:
+    dbscan = DBSCAN(min_samples=semp, eps=ep)
+    dbscan.fit(data)
+    lab = dbscan.labels_
+    print('min semp ', semp, ', epsilon ', ep, ':')
+    print(len(set(lab)))
+
+
+X_train, X_test, y_train, y_test = train_test_split(data, labels, test_size=0.2, stratify=labels, random_state=14)
+s = StandardScaler()
+s.fit(X_train)
+X_train_std = s.transform(X_train)
+X_test_std = s.transform(X_test)
+
+nC=[ 0.85, 0.9, 0.95, 0.97]
+#primena pca sa razlicitim opsezima varijanse
+for i in nC:
+    pca = PCA(n_components=i)
+    pca.fit(X_train_std)
+    X_train_r = pca.transform(X_train_std)
+    X_test_r = pca.transform(X_test_std)
+    print('Prostor redukovan na ', i, '% varijanse ima dimenziju ', pca.n_components_)
+
+pca = PCA(n_components=None)
+pca.fit(X_train_std)
+plt.plot(np.cumsum(pca.explained_variance_ratio_))
+
+pca = PCA(n_components=0.95)
+pca.fit(X_train_std)
+X_train_r = pca.transform(X_train_std)
+X_test_r = pca.transform(X_test_std)
+
+cluster = AgglomerativeClustering(n_clusters=5, affinity='euclidean', linkage='ward')
+cluster.fit_predict(X_train_r)
+
+kmeans = KMeans(n_clusters=5, n_init=10, max_iter=300, 
+                init='k-means++',random_state=42)
+# init moze biti 'random' uzorci ili odredjene vrednosti date matricom
+kmeans.fit_predict(X_train_r)
+print('aglomerativno, 5 klastera, ward linkage:')
+print_score(kmeans, cluster, X_train_r)
+
+testiraj_bez_ward(X_train_r)
+
+for semp in [1, 5, 10, 50, 100]:
+  for ep in [0.5, 1, 5, 10, 50, 100]:
+    dbscan = DBSCAN(min_samples=semp, eps=ep)
+    dbscan.fit(X_train_r)
+    lab = dbscan.labels_
+    print('min semp ', semp, ', epsilon ', ep, ':')
+    print(len(set(lab)))
+
+lda = LinearDiscriminantAnalysis(n_components=4)
+lda.fit(X_train_std, y_train)
+X_train_r = lda.transform(X_train_std)
+X_test_r = lda.transform(X_test_std)
+
+testiraj_bez_ward(X_train_r)
+
+cluster = AgglomerativeClustering(n_clusters=5
+                                  , affinity='euclidean', linkage='ward')
+cluster.fit_predict(X_train_r)
+
+kmeans = KMeans(n_clusters=5, n_init=10, max_iter=300, 
+                init='k-means++',random_state=42)
+# init moze biti 'random' uzorci ili odredjene vrednosti date matricom
+kmeans.fit_predict(X_train_r)
+
+print_score(kmeans, cluster, X_train_r)
+
+cluster = AgglomerativeClustering(n_clusters=5
+                                  , affinity='manhattan', linkage='average')
+cluster.fit_predict(X_train_r)
+
+kmeans = KMeans(n_clusters=5, n_init=10, max_iter=300, 
+                init='k-means++',random_state=42)
+# init moze biti 'random' uzorci ili odredjene vrednosti date matricom
+kmeans.fit_predict(X_train_r)
+
+print_score(kmeans, cluster, X_train_r)
+
+for semp in [1, 5, 10, 50, 100]:
+  for ep in [0.5, 1, 5, 10, 50, 100]:
+    dbscan = DBSCAN(min_samples=semp, eps=ep)
+    dbscan.fit(X_train_r)
+    lab = dbscan.labels_
+    print('min semp ', semp, ', epsilon ', ep, ':')
+    print(len(set(lab)))
+
+from sklearn.cluster import MeanShift, estimate_bandwidth
+
+bandwidth = estimate_bandwidth(X_train_r, quantile=0.2, n_samples=801)
+
+ms = MeanShift(bandwidth=bandwidth, bin_seeding=True)
+ms.fit(X_train_r)
+labels = ms.labels_
+print(len(set(labels)))
+
+print('SIL for Mean Shift: ', metrics.silhouette_score(X_train_r, ms.labels_))
+print_score(kmeans,cluster,X_train_r)
+
+bandwidth = estimate_bandwidth(data, quantile=0.2, n_samples=801)
+
+ms = MeanShift(bandwidth=bandwidth, bin_seeding=False)
+ms.fit(data)
+labels = ms.labels_
+print(len(set(labels)))
+
+print('SIL for Mean Shift: ', metrics.silhouette_score(data, ms.labels_))
